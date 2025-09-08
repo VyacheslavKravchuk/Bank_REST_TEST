@@ -1,0 +1,5 @@
+databaseChangeLog:
+  - include:
+      file: liquibase/scripts/users.sql
+  - include:
+      file: liquibase/scripts/cards.sql

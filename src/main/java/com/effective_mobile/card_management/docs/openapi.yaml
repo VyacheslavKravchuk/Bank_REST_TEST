@@ -1,0 +1,454 @@
+openapi: 3.0.0
+info:
+  title: API
+  version: 1.0.0
+  description:  backend-приложение на Java (Spring Boot) для управления банковскими картами
+
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserDto:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Имя пользователя
+        password:
+          type: string
+          description: Пароль
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+        firstName:
+          type: string
+          description: Имя
+        lastName:
+          type: string
+          description: Фамилия
+        role:
+          type: string
+          description: Роль пользователя (например, ADMIN, USER)
+          enum:
+            - ROLE_USER
+            - ROLE_ADMIN
+    CardDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: ID карты
+        cardNumberMasked:
+          type: string
+          description: Замаскированный номер карты
+        owner:
+          type: string
+          description: Имя владельца
+        expiryDate:
+          type: string
+          format: date
+          description: Срок действия карты (YYYY-MM-DD)
+        status:
+          type: string
+          description: Статус карты (например, ACTIVE, BLOCKED, EXPIRED)
+          enum:
+            - ACTIVE
+            - BLOCKED
+            - EXPIRED
+        balance:
+          type: number
+          format: double
+          description: Баланс карты
+    CardCreateDto:
+      type: object
+      properties:
+        owner:
+          type: string
+          description: Имя владельца
+        expiryDate:
+          type: string
+          format: date
+          description: Срок действия карты (YYYY-MM-DD)
+        balance:
+          type: number
+          format: double
+          description: Начальный баланс
+        userId:
+          type: integer
+          format: int64
+          description: ID пользователя, которому принадлежит карта
+    CardUpdateDto:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Новый статус карты (например, ACTIVE, BLOCKED, EXPIRED)
+          enum:
+            - ACTIVE
+            - BLOCKED
+            - EXPIRED
+    TransferDto:
+      type: object
+      properties:
+        fromCardId:
+          type: integer
+          format: int64
+          description: ID карты отправителя
+        toCardId:
+          type: integer
+          format: int64
+          description: ID карты получателя
+        amount:
+          type: number
+          format: double
+          description: Сумма перевода
+    AuthenticationResponse:
+      type: object
+      properties:
+        jwt:
+          type: string
+          description: JWT токен
+paths:
+  /users/register:
+    post:
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDto'
+      responses:
+        '200':
+          description: Пользователь успешно зарегистрирован
+        '400':
+          description: Неверный запрос (например, неверный формат данных)
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /users/authenticate:
+    post:
+      summary: Аутентификация пользователя и генерация токена
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserDto'
+      responses:
+        '200':
+          description: Успешная аутентификация, возвращается JWT токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponse'
+        '401':
+          description: Неверные учетные данные
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Пользователь не найден
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/cards:
+    post:
+      security:
+        - bearerAuth: []
+      summary: Регистрация карты пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardCreateDto'
+      responses:
+        '200':
+          description: Карта успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardDto'
+        '400':
+          description: Неверный запрос (например, неверный формат данных)
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: Доступ запрещен
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+    get:
+      security:
+        - bearerAuth: []
+      summary: Получение всех карт
+      responses:
+        '200':
+          description: Список карт получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CardDto'
+        '403':
+          description: Доступ запрещен
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/cards/{id}:
+    put:
+      security:
+        - bearerAuth: []
+      summary: Обновление карты пользователя
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardUpdateDto'
+      responses:
+        '200':
+          description: Карта успешно обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardDto'
+        '400':
+          description: Неверный запрос (например, неверный формат данных)
+          content:
+            text/plain:
+              schema:
+                type: string
+        '403':
+          description: Доступ запрещен
+        '404':
+          description: Карта не найдена
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+    delete:
+      security:
+        - bearerAuth: []
+      summary: Удаление карты пользователя
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      responses:
+        '204':
+          description: Карта успешно удалена
+        '403':
+          description: Доступ запрещен
+        '404':
+          description: Карта не найдена
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/cards/{id}/block:
+    post:
+      security:
+        - bearerAuth: []
+      summary: Блокировка карты пользователя
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      responses:
+        '200':
+          description: Карта успешно заблокирована
+        '403':
+          description: Доступ запрещен
+        '404':
+          description: Карта не найдена
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /admin/cards/{id}/activate:
+    post:
+      security:
+        - bearerAuth: []
+      summary: Активация карты пользователя
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      responses:
+        '200':
+          description: Карта успешно активирована
+        '403':
+          description: Доступ запрещен
+        '404':
+          description: Карта не найдена
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /cards:
+    get:
+      security:
+        - bearerAuth: []
+      summary: Получение карт пользователя
+      parameters:
+        - in: query
+          name: pageable
+          schema:
+            type: string
+          description: Параметры пагинации
+      responses:
+        '200':
+          description: Список карт получен
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CardDto'
+        '403':
+          description: Доступ запрещен
+
+  /cards/transfer:
+    post:
+      security:
+        - bearerAuth: []
+      summary: Перевод средств между картами
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferDto'
+      responses:
+        '200':
+          description: Успешно выполнен перевод средств
+
+  /cards/{id}/balance:
+    get:
+      security:
+        - bearerAuth: []
+      summary: Получение баланса карты
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      responses:
+        '200':
+          description: Баланс карты
+          content:
+            application/json:
+              schema:
+                type: number
+                format: double
+        '403':
+          description: Доступ запрещен
+
+  /cards/{id}/request-block:
+    post:
+      security:
+        - bearerAuth: []
+      summary: Запрос на блокировку карты
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: ID карты
+      responses:
+        '200':
+          description: Запрос на блокировку карты успешно обработан
+        '403':
+          description: Доступ запрещен
