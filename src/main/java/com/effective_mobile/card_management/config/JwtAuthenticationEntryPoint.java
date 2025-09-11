@@ -1,6 +1,7 @@
 package com.effective_mobile.card_management.config;
 
 import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
 
 import javax.servlet.ServletException;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint, Serializable {
 
+    @Serial
     private static final long serialVersionUID = -7858869558953243875L;
 
     @Override
