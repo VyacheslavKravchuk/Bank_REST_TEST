@@ -24,7 +24,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.web.bind.annotation.CrossOrigin;
 
 /**
  * Класс контроллер для пользователей
@@ -84,7 +83,8 @@ public class UserController {
                     new UsernamePasswordAuthenticationToken(userDto.getUsername(), userDto.getPassword())
             );
         } catch (AuthenticationException e) {
-            logger.error("Ошибка аутентификации для пользователя {}: {}", userDto.getUsername(), e.getMessage(), e);
+            logger.error("Ошибка аутентификации для пользователя {}: {}", userDto.getUsername(),
+                    e.getMessage(), e);
             return ResponseEntity.status(401).body("Неверные учетные данные");
         }
 
@@ -97,6 +97,12 @@ public class UserController {
 
         final String jwt = jwtUtil.generateToken(userDetails);
 
+        if (!jwtUtil.validateToken(jwt, userDetails)) {
+            logger.error("Сгенерированный JWT недействителен сразу после создания!");
+            return ResponseEntity.status(500).body("Ошибка создания токена"); // Или другое подходящее сообщение об ошибке
+        }
+
         return ResponseEntity.ok(new AuthenticationResponse(jwt));
     }
+
 }

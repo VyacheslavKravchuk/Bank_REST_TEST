@@ -1,16 +1,15 @@
 package com.effective_mobile.card_management.config;
-import java.io.IOException;
 
+import java.io.IOException;
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import com.effective_mobile.card_management.util.JwtUtil;
-import org.springframework.beans.factory.annotation.Autowired;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -21,18 +20,34 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import java.util.Collections;
 import java.util.List;
+import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import io.jsonwebtoken.Claims;
+import java.security.Key;
+
 
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
-    @Value("${spring.security.jwt.secret}")
-    private String secret;
+    private static final Logger logger = LoggerFactory.getLogger(JwtRequestFilter.class);
 
-    @Autowired
-    private JwtUtil jwtUtil;
+    private final String secret;
+    private final JwtUtil jwtUtil;
+
+    public JwtRequestFilter(@Value("${spring.security.jwt.secret}") String secret, JwtUtil jwtUtil) {
+        this.secret = secret;
+        this.jwtUtil = jwtUtil;
+    }
+
+    private Key getSigningKey() {
+        byte[] keyBytes = secret.getBytes();
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
         final String authorizationHeader = request.getHeader("Authorization");
@@ -50,9 +65,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 request.setAttribute("expired", e.getMessage());
 
             } catch (Exception e) {
-
                 logger.warn("Невалидный JWT токен: " + e.getMessage());
-
                 chain.doFilter(request, response);
                 return;
             }
@@ -60,25 +73,34 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-            String role = (String) Jwts.parser().setSigningKey(secret).parseClaimsJws(jwt).getBody().get("role");
+            try {
+                Claims claims = Jwts.parserBuilder()
+                        .setSigningKey(getSigningKey())
+                        .build()
+                        .parseClaimsJws(jwt)
+                        .getBody();
+                String role = (String) claims.get("role");
 
-            if (role == null) {
+                if (role == null) {
+                    logger.warn("Роль не найдена в JWT токене для пользователя: " + username);
+                    chain.doFilter(request, response);
+                    return;
+                }
+                List<SimpleGrantedAuthority> authorities =
+                        Collections.singletonList(new SimpleGrantedAuthority(role));
 
-                logger.warn("Роль не найдена в JWT токене для пользователя: " + username);
-                chain.doFilter(request, response);
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(
+                        username, null, authorities);
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (Exception e) {
+                logger.error("Ошибка при обработке JWT: " + e.getMessage());
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 return;
             }
-
-            List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(role));
-
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    username, null, authorities);
-
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-
         }
         chain.doFilter(request, response);
     }
 }
+
