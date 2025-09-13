@@ -11,8 +11,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.NoSuchElementException;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -38,16 +38,22 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<String> handleValidationException(MethodArgumentNotValidException ex) {
+    public ResponseEntity<Object> handleValidationException(MethodArgumentNotValidException ex) {
+        List<String> errors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                .collect(Collectors.toList());
 
-        String errorMessage = Optional.ofNullable(ex.getBindingResult().getFieldError())
-                .map(fieldError -> Optional.ofNullable(fieldError.getDefaultMessage())
-                        .orElse("Ошибка валидации поля: " + fieldError.getField()))
-                .orElse("Ошибка валидации: Отсутствует информация о поле.");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", new Date());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("errors", errors);
 
-        logger.error("Ошибка валидации: {}", errorMessage);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorMessage);
+        logger.error("Ошибка валидации: {}", body);
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
+
 
     @ExceptionHandler(CardNotFoundException.class)
     public ResponseEntity<String> handleCardNotFoundException(CardNotFoundException ex) {

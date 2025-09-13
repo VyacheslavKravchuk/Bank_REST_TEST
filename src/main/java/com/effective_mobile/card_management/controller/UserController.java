@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
+import javax.validation.Valid;
+
 /**
  * Класс контроллер для пользователей
  */
@@ -50,7 +52,7 @@ public class UserController {
             @ApiResponse(responseCode = "500", description = "Внутренняя ошибка сервера")
     })
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody UserDto userDto) {
+    public ResponseEntity<?> registerUser(@Valid @RequestBody UserDto userDto) {
         logger.info("Запрос регистрации");
         userService.registerNewUser(userDto);
         return ResponseEntity.ok("Пользователь зарегистрирован");
