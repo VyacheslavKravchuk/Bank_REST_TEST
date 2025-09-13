@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import javax.transaction.Transactional;
 import java.util.List;
@@ -38,36 +39,13 @@ public class CardServiceImpl implements CardService {
         this.cardMapper = cardMapper;
     }
 
-    private Card findCardOrThrow(Long cardId) {
-        return cardRepository.findById(cardId)
-                .orElseThrow(() -> {
-                    logger.error("Карта с ID {} не найдена", cardId);
-                    return new CardNotFoundException(cardId);
-                });
-    }
-
-    private User findUserOrThrow(String username) {
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> {
-                    logger.error("Пользователь с именем {} не найден", username);
-                    return new IllegalArgumentException("User not found with username: " + username);
-                });
-    }
-
-    private void verifyCardOwnership(User user, Card card, Long cardId) {
-        if (!card.getUser().equals(user)) {
-            logger.error("Пользователь {} не владеет картой с ID {}", user.getUsername(), cardId);
-            throw new IllegalArgumentException("User does not own this card.");
-        }
-    }
-
     @Override
     public CardDto createCard(CardCreateDto cardCreateDto) {
         logger.info("Создание новой карты для пользователя с ID: {}", cardCreateDto.getUserId());
         User user = userRepository.findById(cardCreateDto.getUserId())
                 .orElseThrow(() -> {
                     logger.error("Пользователь с ID {} не найден", cardCreateDto.getUserId());
-                    return new IllegalArgumentException("User not found with id: " + cardCreateDto.getUserId());
+                    return new UsernameNotFoundException("User not found with id: " + cardCreateDto.getUserId());
                 });
 
         Card card = new Card();
@@ -86,7 +64,12 @@ public class CardServiceImpl implements CardService {
     @Override
     public CardDto updateCard(Long id, CardUpdateDto cardUpdateDto) {
         logger.info("Обновление карты с ID: {}", id);
-        Card card = findCardOrThrow(id);
+        Card card = cardRepository.findById(id)
+                .orElseThrow(() -> {
+                    logger.error("Карта с ID {} не найдена", id);
+                    return new CardNotFoundException(id);
+                });
+
         card.setStatus(cardUpdateDto.getStatus());
         Card updatedCard = cardRepository.save(card);
         logger.info("Карта с ID {} успешно обновлена", updatedCard.getId());
@@ -103,7 +86,11 @@ public class CardServiceImpl implements CardService {
     @Override
     public CardDto getCardById(Long id) {
         logger.info("Получение карты с ID: {}", id);
-        Card card = findCardOrThrow(id);
+        Card card = cardRepository.findById(id)
+                .orElseThrow(() -> {
+                    logger.error("Карта с ID {} не найдена", id);
+                    return new CardNotFoundException(id);
+                });
         CardDto cardDto = cardMapper.toDto(card);
         logger.info("Карта с ID {} успешно получена", id);
         return cardDto;
@@ -112,19 +99,23 @@ public class CardServiceImpl implements CardService {
     @Override
     public List<CardDto> getAllCards() {
         logger.info("Получение всех карт");
-        List<CardDto> cards = cardRepository.findAll().stream()
+        return cardRepository.findAll().stream()
                 .map(cardMapper::toDto)
-                .collect(Collectors.toList());
-        logger.info("Получено {} карт", cards.size());
-        return cards;
+                .collect(Collectors.toList());  // Упрощенный вариант без промежуточной переменной
     }
 
     @Override
     public Page<CardDto> getUserCards(String username, Pageable pageable) {
         logger.info("Получение карт пользователя {}. Параметры пагинации: {}", username, pageable);
-        User user = findUserOrThrow(username);
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    logger.error("Пользователь с именем {} не найден", username);
+                    return new UsernameNotFoundException("User not found with username: " + username);
+                });
+
         Page<CardDto> cards = cardRepository.findByUser(user, pageable)
                 .map(cardMapper::toDto);
+
         logger.info("Получено {} карт для пользователя {}", cards.getTotalElements(), username);
         return cards;
     }
@@ -133,12 +124,20 @@ public class CardServiceImpl implements CardService {
     @Transactional
     public void transferFunds(String username, TransferDto transferDto) {
         logger.info("Перевод средств от пользователя {}. Данные перевода: {}", username, transferDto);
-        Card fromCard = findCardOrThrow(transferDto.getFromCardId());
-        Card toCard = findCardOrThrow(transferDto.getToCardId());
-        User user = findUserOrThrow(username);
+
+        // Ищем карты, используя Optional для обработки случаев, когда карта не найдена
+        Card fromCard = cardRepository.findById(transferDto.getFromCardId())
+                .orElseThrow(() -> new CardNotFoundException(transferDto.getFromCardId()));
+
+        Card toCard = cardRepository.findById(transferDto.getToCardId())
+                .orElseThrow(() -> new CardNotFoundException(transferDto.getToCardId()));
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
 
         if (!fromCard.getUser().equals(user) || !toCard.getUser().equals(user)) {
-            logger.error("Пользователь {} не владеет одной или обеими картами (FromCardId: {}, ToCardId: {})", username, fromCard.getId(), toCard.getId());
+            logger.error("Пользователь {} не владеет одной или обеими картами (FromCardId: {}, ToCardId: {})",
+                    username, fromCard.getId(), toCard.getId());
             throw new IllegalArgumentException("User does not own one or both of the cards.");
         }
 
@@ -153,15 +152,24 @@ public class CardServiceImpl implements CardService {
 
         cardRepository.save(fromCard);
         cardRepository.save(toCard);
-        logger.info("Успешно выполнен перевод средств от пользователя {} с карты {} на карту {}", username, fromCard.getId(), toCard.getId());
+        logger.info("Успешно выполнен перевод средств от пользователя {} с карты {} на карту {}",
+                username, fromCard.getId(), toCard.getId());
     }
 
     @Override
     public Double getCardBalance(String username, Long cardId) {
         logger.info("Получение баланса карты с ID {} для пользователя {}", cardId, username);
-        Card card = findCardOrThrow(cardId);
-        User user = findUserOrThrow(username);
-        verifyCardOwnership(user, card, cardId);
+
+        Card card = cardRepository.findById(cardId)
+                .orElseThrow(() -> new CardNotFoundException(cardId));
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+
+        if (!card.getUser().equals(user)) {
+            logger.error("Пользователь {} не владеет картой с ID {}", username, cardId);
+            throw new IllegalArgumentException("User does not own this card.");
+        }
 
         double balance = card.getBalance();
         logger.info("Баланс карты с ID {} пользователя {} равен {}", cardId, username, balance);
@@ -171,7 +179,9 @@ public class CardServiceImpl implements CardService {
     @Override
     public void blockCard(Long cardId) {
         logger.info("Блокировка карты с ID: {}", cardId);
-        Card card = findCardOrThrow(cardId);
+
+        Card card = cardRepository.findById(cardId)
+                .orElseThrow(() -> new CardNotFoundException(cardId));
 
         card.setStatus(CardStatus.BLOCKED);
         cardRepository.save(card);
@@ -181,7 +191,9 @@ public class CardServiceImpl implements CardService {
     @Override
     public void activateCard(Long cardId) {
         logger.info("Активация карты с ID: {}", cardId);
-        Card card = findCardOrThrow(cardId);
+
+        Card card = cardRepository.findById(cardId)
+                .orElseThrow(() -> new CardNotFoundException(cardId));
 
         card.setStatus(CardStatus.ACTIVE);
         cardRepository.save(card);
@@ -191,10 +203,17 @@ public class CardServiceImpl implements CardService {
     @Override
     public void requestBlockCard(String username, Long cardId) {
         logger.info("Запрос на блокировку карты с ID {} от пользователя {}", cardId, username);
-        Card card = findCardOrThrow(cardId);
-        User user = findUserOrThrow(username);
-        verifyCardOwnership(user, card, cardId);
 
+        Card card = cardRepository.findById(cardId)
+                .orElseThrow(() -> new CardNotFoundException(cardId));
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+
+        if (!card.getUser().equals(user)) {
+            logger.error("Пользователь {} не владеет картой с ID {}", username, cardId);
+            throw new IllegalArgumentException("User does not own this card.");
+        }
         card.setStatus(CardStatus.BLOCKED);
         cardRepository.save(card);
         logger.info("Запрос на блокировку карты с ID {} от пользователя {} успешно обработан", cardId, username);

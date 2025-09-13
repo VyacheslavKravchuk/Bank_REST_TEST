@@ -10,80 +10,170 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.server.ResponseStatusException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.util.*;
 import java.util.stream.Collectors;
 
+
+/**
+ * Глобальный обработчик исключений для REST API.  Перехватывает и обрабатывает исключения,
+ * возникающие в контроллерах, и преобразует их в JSON ответы с соответствующим HTTP статусом.
+ */
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /**
+     * Создает JSON ответ об ошибке для заданного HTTP статуса, сообщения и исключения.
+     *
+     * @param status  HTTP статус ошибки.
+     * @param message Сообщение об ошибке для пользователя.
+     * @param ex      Исключение, вызвавшее ошибку (для логирования).
+     * @param errorId Уникальный идентификатор ошибки (опционально).
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
+    private ResponseEntity<Object> createErrorResponse(HttpStatus status, String message,
+                                                       Exception ex, String errorId) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", new Date());
+        body.put("status", status.value());
+        body.put("error", message);
+        if (errorId != null) {
+            body.put("errorId", errorId);
+        }
+        if (ex != null) {
+            body.put("exception", ex.getClass().getName());
+        }
+        logger.error(message, ex);
+        return new ResponseEntity<>(body, status);
+    }
+
+    /**
+     * Обрабатывает исключение {@link IllegalArgumentException}.
+     * Возвращает HTTP статус 400 (BAD REQUEST) с сообщением об ошибке.
+     *
+     * @param e Исключение {@link IllegalArgumentException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleIllegalArgumentException(IllegalArgumentException e) {
-        logger.error("Ошибка: Неверный аргумент: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Неверные данные: " + e.getMessage());
+    public ResponseEntity<Object> handleIllegalArgumentException(IllegalArgumentException e) {
+        return createErrorResponse(HttpStatus.BAD_REQUEST, "Неверные данные: " + e.getMessage(), e, null);
     }
 
+    /**
+     * Обрабатывает исключение {@link AuthenticationException}.
+     * Возвращает HTTP статус 401 (UNAUTHORIZED) с сообщением об ошибке.
+     *
+     * @param e Исключение {@link AuthenticationException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<String> handleAuthenticationException(AuthenticationException e) {
-        logger.error("Ошибка аутентификации: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Неверные учетные данные");
+    public ResponseEntity<Object> handleAuthenticationException(AuthenticationException e) {
+        return createErrorResponse(HttpStatus.UNAUTHORIZED, "Неверные учетные данные", e, null);
     }
 
+    /**
+     * Обрабатывает исключение {@link NoSuchElementException}.
+     * Возвращает HTTP статус 404 (NOT FOUND) с сообщением об ошибке.
+     *
+     * @param ex Исключение {@link NoSuchElementException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(NoSuchElementException.class)
-    public ResponseEntity<String> handleNoSuchElementException(NoSuchElementException ex) {
-        logger.error("Ресурс не найден: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
+    public ResponseEntity<Object> handleNoSuchElementException(NoSuchElementException ex) {
+        return createErrorResponse(HttpStatus.NOT_FOUND,
+                "Ресурс не найден: " + ex.getMessage(), ex, null);
     }
 
+    /**
+     * Обрабатывает исключение {@link MethodArgumentNotValidException}, возникающее при валидации данных.
+     * Возвращает HTTP статус 400 (BAD REQUEST) со списком ошибок валидации.
+     *
+     * @param ex Исключение {@link MethodArgumentNotValidException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке, содержащим список ошибок валидации.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Object> handleValidationException(MethodArgumentNotValidException ex) {
-        List<String> errors = ex.getBindingResult()
+        List<Map<String, String>> errors = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
-                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                .map(fieldError -> {
+                    Map<String, String> error = new HashMap<>();
+                    error.put("field", fieldError.getField());
+                    error.put("message", fieldError.getDefaultMessage());
+                    return error;
+                })
                 .collect(Collectors.toList());
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", new Date());
         body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Ошибка валидации данных"); // Общее сообщение
         body.put("errors", errors);
-
         logger.error("Ошибка валидации: {}", body);
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
 
-
+    /**
+     * Обрабатывает исключение {@link CardNotFoundException}.
+     * Возвращает HTTP статус 404 (NOT FOUND) с сообщением об ошибке.
+     *
+     * @param ex Исключение {@link CardNotFoundException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(CardNotFoundException.class)
-    public ResponseEntity<String> handleCardNotFoundException(CardNotFoundException ex) {
-        logger.error("Карта не найдена: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Карта не найдена");
+    public ResponseEntity<Object> handleCardNotFoundException(CardNotFoundException ex) {
+        return createErrorResponse(HttpStatus.NOT_FOUND, "Карта не найдена", ex, null);
     }
 
+    /**
+     * Обрабатывает исключение {@link InsufficientFundsException}.
+     * Возвращает HTTP статус 400 (BAD REQUEST) с сообщением об ошибке.
+     *
+     * @param ex Исключение {@link InsufficientFundsException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(InsufficientFundsException.class)
-    public ResponseEntity<String> handleInsufficientFundsException(InsufficientFundsException ex) {
-        logger.error("Недостаточно средств: {}", ex.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Недостаточно средств для перевода");
+    public ResponseEntity<Object> handleInsufficientFundsException(InsufficientFundsException ex) {
+        return createErrorResponse(HttpStatus.BAD_REQUEST, "Недостаточно средств для перевода", ex, null);
     }
 
+    /**
+     * Обрабатывает исключение {@link ResponseStatusException}.
+     * Возвращает HTTP статус и сообщение, указанные в исключении.
+     *
+     * @param ex Исключение {@link ResponseStatusException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<String> handleResponseStatusException(ResponseStatusException ex) {
-        logger.error("Ошибка HTTP статуса: {}", ex.getMessage());
-        return ResponseEntity.status(ex.getStatus()).body(ex.getReason());
+    public ResponseEntity<Object> handleResponseStatusException(ResponseStatusException ex) {
+        return createErrorResponse(ex.getStatus(), ex.getReason(), ex, null);
     }
 
+    /**
+     * Обрабатывает все необработанные исключения типа {@link Exception}.
+     * Возвращает HTTP статус 500 (INTERNAL SERVER ERROR) с общим сообщением об ошибке.
+     * Генерирует уникальный ID ошибки для отслеживания в логах.
+     *
+     * @param ex Исключение {@link Exception}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<String> handleGeneralException(Exception ex) {
-        logger.error("Внутренняя ошибка сервера: {}", ex.getMessage(), ex);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.");
+    public ResponseEntity<Object> handleGeneralException(Exception ex) {
+        String errorId = UUID.randomUUID().toString();
+        String message = "Внутренняя ошибка сервера. Пожалуйста, попробуйте позже.";
+        return createErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, message, ex, errorId);
     }
 
+    /**
+     * Обрабатывает исключение {@link UsernameNotFoundException}.
+     * Возвращает HTTP статус 404 (NOT FOUND) с сообщением об ошибке.
+     *
+     * @param e Исключение {@link UsernameNotFoundException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
     @ExceptionHandler(UsernameNotFoundException.class)
-    public ResponseEntity<String> handleUsernameNotFoundException(UsernameNotFoundException e) {
-        logger.warn("Пользователь не найден: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Пользователь не найден");
+    public ResponseEntity<Object> handleUsernameNotFoundException(UsernameNotFoundException e) {
+        return createErrorResponse(HttpStatus.NOT_FOUND, "Пользователь не найден", e, null);
     }
-
 }
