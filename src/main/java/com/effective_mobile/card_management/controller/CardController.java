@@ -33,7 +33,6 @@ public class CardController {
         this.cardService = cardService;
     }
 
-
     @Operation(summary = "Получение всех карт пользователя",
             description = "Возвращает список карт, принадлежащих аутентифицированному пользователю," +
                     " с поддержкой пагинации.",
@@ -65,7 +64,8 @@ public class CardController {
                     schema = @Schema(type = "string")) Pageable pageable) {
 
         String username = principal.getName();
-        logger.info("Запрос на получение карт пользователя {}. Параметры пагинации: {}", username, pageable);
+        logger.info("Запрос на получение карт пользователя {}. Параметры пагинации: {}",
+                username, pageable);
         Page<CardDto> cards = cardService.getUserCards(username, pageable);
         logger.info("Получено {} карт для пользователя {}", cards.getTotalElements(), username);
         return ResponseEntity.ok(cards);
@@ -92,9 +92,11 @@ public class CardController {
             })
     @PostMapping("/transfer")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<Void> transferFunds(@RequestBody TransferDto transferDto, Principal principal) {
+    public ResponseEntity<Void> transferFunds(@RequestBody TransferDto transferDto,
+                                              Principal principal) {
         String username = principal.getName();
-        logger.info("Запрос на перевод средств от пользователя {}. Данные перевода: {}", username, transferDto);
+        logger.info("Запрос на перевод средств от пользователя {}. Данные перевода: {}",
+                username, transferDto);
         cardService.transferFunds(username, transferDto);
         logger.info("Успешно выполнен перевод средств от пользователя {}", username);
         return ResponseEntity.ok().build();
@@ -103,7 +105,8 @@ public class CardController {
     @Operation(summary = "Получить баланс карты пользователя",
             responses = {
                     @ApiResponse(responseCode = "200", description = "Успешный ответ",
-                            content = @Content(mediaType = "application/json", schema = @Schema(implementation = Double.class))),
+                            content = @Content(mediaType = "application/json",
+                                    schema = @Schema(implementation = Double.class))),
                     @ApiResponse(responseCode = "400", description = "Неверный запрос",
                             content = @Content(mediaType = "application/json",
                                     schema = @Schema(implementation = String.class))),
@@ -159,5 +162,6 @@ public class CardController {
         return ResponseEntity.ok().build();
     }
 }
+
 
 
