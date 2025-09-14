@@ -7,6 +7,7 @@ import com.effective_mobile.card_management.entity.Card;
 import com.effective_mobile.card_management.entity.User;
 import com.effective_mobile.card_management.enums.CardStatus;
 import com.effective_mobile.card_management.exception.CardNotFoundException;
+import com.effective_mobile.card_management.exception.ConcurrentUpdateException;
 import com.effective_mobile.card_management.exception.InsufficientFundsException;
 import com.effective_mobile.card_management.mapper.CardMapper;
 import com.effective_mobile.card_management.repository.CardRepository;
@@ -14,10 +15,13 @@ import com.effective_mobile.card_management.repository.UserRepository;
 import com.effective_mobile.card_management.service.CardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+
 import javax.transaction.Transactional;
 import java.util.List;
 import java.util.Random;
@@ -125,7 +129,6 @@ public class CardServiceImpl implements CardService {
     public void transferFunds(String username, TransferDto transferDto) {
         logger.info("Перевод средств от пользователя {}. Данные перевода: {}", username, transferDto);
 
-        // Ищем карты, используя Optional для обработки случаев, когда карта не найдена
         Card fromCard = cardRepository.findById(transferDto.getFromCardId())
                 .orElseThrow(() -> new CardNotFoundException(transferDto.getFromCardId()));
 
@@ -150,11 +153,15 @@ public class CardServiceImpl implements CardService {
         fromCard.setBalance(fromCard.getBalance() - transferDto.getAmount());
         toCard.setBalance(toCard.getBalance() + transferDto.getAmount());
 
+
         cardRepository.save(fromCard);
         cardRepository.save(toCard);
-        logger.info("Успешно выполнен перевод средств от пользователя {} с карты {} на карту {}",
-                username, fromCard.getId(), toCard.getId());
+
+
+        logger.info("Успешно выполнен перевод средств от пользователя {} с карты {} на карту {}", username, fromCard.getId(), toCard.getId());
     }
+
+
 
     @Override
     public Double getCardBalance(String username, Long cardId) {

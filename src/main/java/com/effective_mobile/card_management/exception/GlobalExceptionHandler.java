@@ -1,5 +1,6 @@
 package com.effective_mobile.card_management.exception;
 
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -175,5 +176,33 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UsernameNotFoundException.class)
     public ResponseEntity<Object> handleUsernameNotFoundException(UsernameNotFoundException e) {
         return createErrorResponse(HttpStatus.NOT_FOUND, "Пользователь не найден", e, null);
+    }
+
+    /**
+     * Обрабатывает исключение {@link OptimisticLockingFailureException}.
+     * Возвращает HTTP статус 409 (CONFLICT) с сообщением об ошибке.
+     *
+     * @param ex Исключение {@link OptimisticLockingFailureException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<Object> handleOptimisticLockingFailureException(OptimisticLockingFailureException ex) {
+        String errorId = UUID.randomUUID().toString();
+        String message = "Конкурентное обновление данных. Пожалуйста, повторите попытку.";
+        return createErrorResponse(HttpStatus.CONFLICT, message, ex, errorId);
+    }
+
+    /**
+     * Обрабатывает исключение {@link ConcurrentUpdateException}.
+     * Возвращает HTTP статус 409 (CONFLICT) с сообщением об ошибке.
+     *
+     * @param ex Исключение {@link ConcurrentUpdateException}.
+     * @return ResponseEntity с JSON телом ответа об ошибке.
+     */
+    @ExceptionHandler(ConcurrentUpdateException.class)
+    public ResponseEntity<Object> handleConcurrentUpdateException(ConcurrentUpdateException ex) {
+        String errorId = UUID.randomUUID().toString();
+        String message = "Конкурентное обновление данных. Пожалуйста, повторите попытку.";
+        return createErrorResponse(HttpStatus.CONFLICT, message, ex, errorId);
     }
 }

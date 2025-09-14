@@ -6,5 +6,6 @@ CREATE TABLE IF NOT EXISTS card (
     status VARCHAR(20) NOT NULL,
     balance DOUBLE PRECISION NOT NULL,
     user_id INTEGER NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

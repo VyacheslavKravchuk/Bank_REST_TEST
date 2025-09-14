@@ -43,6 +43,9 @@ public class Card {
     @Column(nullable = false, precision = 12, scale = 2)
     private Double balance;
 
+    @Version
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     @ToString.Exclude
