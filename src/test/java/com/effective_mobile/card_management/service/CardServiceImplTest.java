@@ -19,6 +19,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +28,9 @@ import org.springframework.data.domain.Pageable;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,6 +39,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class CardServiceImplTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(CardServiceImplTest.class);
 
     @Mock
     private CardRepository cardRepository;
@@ -83,6 +90,58 @@ public class CardServiceImplTest {
         cardUpdateDto = new CardUpdateDto();
         cardUpdateDto.setStatus(CardStatus.BLOCKED);
     }
+
+    @Test
+    public void testTransferFunds_concurrentAccess() throws InterruptedException {
+        int numberOfThreads = 100; //проходит пока не боле чем для 100 потоков
+        ExecutorService service = Executors.newFixedThreadPool(numberOfThreads);
+        CountDownLatch latch = new CountDownLatch(numberOfThreads);
+
+        User user = new User();
+        user.setUsername("testUser");
+
+        Card fromCard = new Card();
+        fromCard.setId(1L);
+        fromCard.setBalance(1000.0);
+        fromCard.setUser(user);
+
+        Card toCard = new Card();
+        toCard.setId(2L);
+        toCard.setBalance(500.0);
+        toCard.setUser(user);
+
+        TransferDto transferDto = new TransferDto();
+        transferDto.setFromCardId(1L);
+        transferDto.setToCardId(2L);
+        transferDto.setAmount(10.0);
+
+        when(userRepository.findByUsername("testUser")).thenReturn(Optional.of(user));
+        when(cardRepository.findById(1L)).thenReturn(Optional.of(fromCard));
+        when(cardRepository.findById(2L)).thenReturn(Optional.of(toCard));
+        when(cardRepository.save(any(Card.class))).thenAnswer(i -> i.getArguments()[0]);
+
+        // Запускаем потоки
+        for (int i = 0; i < numberOfThreads; i++) {
+            service.execute(() -> {
+                try {
+                    cardService.transferFunds("testUser", transferDto);
+                } catch (Exception e) {
+                    logger.error("Ошибка в потоке: ", e);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        latch.await();
+        service.shutdown();
+
+        assertEquals(1000.0 - (10.0 * numberOfThreads), fromCard.getBalance(), 0.001);
+        assertEquals(500.0 + (10.0 * numberOfThreads), toCard.getBalance(), 0.001);
+
+        verify(cardRepository, times(numberOfThreads * 2)).save(any(Card.class));
+    }
+
 
     @Test
     void createCard_Successful() {
